@@ -8,8 +8,9 @@ def transition(rain_t):
 def observation(rain_t):
     return 0.9 if rain_t else 0.2
 
-
 def direct_sampling(seq_length):
+    ''' starting from the initial probability of an event 
+        samples along the sequence '''
     # first element of the raw = state
     # second element of the raw = observation
     seq_matrix = np.zeros((seq_length, 2))
@@ -31,7 +32,6 @@ def forward(f, obs):
     O = [[0.9,  0],[0,  0.2]] if obs else [[0.1, 0], [0, 0.8]]
     forw = O*T.transpose()*f
     forw /= np.sum(forw)
-    #print('observation:', obs, 'prediction: ', forw)
     return forw
 
 def backward(b, obs):
@@ -44,15 +44,15 @@ def backward(b, obs):
     return back
 
 def forw_backw(state_sequence, k):
+    ''' - builds the forward and the backward messages
+        - multiplies elementwise the messages '''
+
     f = np.matrix([0.5, 0.5]).transpose()
     forw_mess = f.transpose()
-
     length = len(state_sequence)
-
     for i in range(length):
         f = forward(f, state_sequence[i,1])
         forw_mess = np.concatenate((forw_mess,f.transpose()))
-    #print(forw_mess)
 
     b = np.matrix([1.0, 1.0]).transpose()
     #back_mess = b.transpose()
@@ -72,51 +72,62 @@ def forw_backw(state_sequence, k):
     return sequence
 
 def forward_improved(f, obs):
+    ''' for the improved version of the forw-backw algo.
+        Computes the forward messages "backward"
+    '''
     # transition  matrix
     T = np.matrix([[0.7, 0.3],[0.3, 0.7]])
     # observation matrix
     O = [[0.9,  0],[0,  0.2]] if obs else [[0.1, 0], [0, 0.8]]
     forw = inv(T.transpose())*inv(O)*f
+    forw = inv(O*T.transpose())*f
     forw /= np.sum(forw)
     #print('observation:', obs, 'prediction: ', forw)
     return forw
 
-def forw_backw_improved1(state_sequence, k):
+def forw_backw_improved(state_sequence, k):
+    ''' Used to save memory.
+        Computes the LAST forward messages 
+        (it does not store the whole sequence of messages)
+        The computes from the end the elementwise multiplication "forw x backw"
+        PROBLEM : inverse matrix produces negative probabilities. 
+    '''
+    f = np.matrix([0.5, 0.5]).transpose()
 
-    length = len(state_sequence)
-    f = np.matrix([1.0, 1.0]).transpose()
     b = np.matrix([1.0, 1.0]).transpose()
-    forw_mess = np.zeros((length, 2))
-    forw_mess[-1] = f.transpose()
-    back_mess = np.zeros((length, 2))
-    back_mess[-1] = b.transpose()
+    length = len(state_sequence)
+
+    # compute the last forward message
+    for i in range(length):
+        f = forward(f, state_sequence[i,1])
+
+    sequence = np.zeros((length,2))
+    fxb = np.multiply(f.transpose(), b.transpose())
+    # fxb /= sum(fxb)
+    sequence[-1] = fxb
     for i in range(length-2, k-1, -1):
         b = backward(b, state_sequence[i-1,1])
         f = forward_improved(f, state_sequence[i-1,1])
-        back_mess[i] = b.transpose()
-        forw_mess[i] = f.transpose()
-    #print(back_mess)
-
-    sequence = np.zeros((length,2))
-    for i in range(length):
-        #print(forw_mess[i])
-        fxb = np.multiply(forw_mess[i], back_mess[i])
-        fxb /= np.sum(fxb)
+        fxb = np.multiply(f.transpose(), b.transpose())
+        # fxb /= sum(fxb)
         sequence[i] = fxb
     return sequence
 
 def main():
     seq_length = 20
     num_sequences = 15
-
-    state_sequence =[]
-    for i in range(num_sequences):
-        state_sequence.append(direct_sampling(seq_length))
-
-    result = forw_backw(state_sequence[1], 0)
-    result = forw_backw_improved1(state_sequence[1], 0)
+    # Direct Sampling
+    state_sequences =[]
+    for _ in range(num_sequences):
+        state_sequences.append(direct_sampling(seq_length))
+    # Takes a sequence obtained via direct sampling -> forward-backward algo
+    result = forw_backw(state_sequences[1], 0)
+    print('Normal algo')
     print(result)
-
+    # Takes a sequence obtained via direct sampling -> improved forward-backward algo (it does not work :( )
+    result_impr = forw_backw_improved(state_sequences[1], 0)
+    print('Improved algo')
+    print(result_impr)
 
 if __name__ == '__main__':
     main()
